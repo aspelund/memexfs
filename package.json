@@ -1,12 +1,16 @@
 {
   "name": "memexfs",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "WASM virtual filesystem exposing grep, read, and ls over markdown",
   "type": "module",
   "license": "MIT",
+  "homepage": "https://github.com/aspelund/memexfs",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/aspelund/memexfs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aspelund/memexfs/issues"
   },
   "keywords": [
     "wasm",
