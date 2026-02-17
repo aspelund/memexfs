@@ -32,6 +32,36 @@ const content = fs.read("account/password-reset.md");
 const entries = JSON.parse(fs.ls(""));
 ```
 
+### Example: customer service agent with Claude
+
+```js
+import Anthropic from "@anthropic-ai/sdk";
+import { loadFromDirectory } from "memexfs";
+
+const fs = loadFromDirectory("./knowledge-base");
+
+// Set up Claude with memexfs tools
+const client = new Anthropic();
+const tools = JSON.parse(fs.tool_definitions());
+
+const response = await client.messages.create({
+  model: "claude-haiku-4-5-20251001",
+  max_tokens: 1024,
+  system:
+    "You are a customer service agent. Use grep to find relevant docs, then read to get full context. Answer based on the documentation only.",
+  tools,
+  messages: [{ role: "user", content: "How do I cancel my subscription?" }],
+});
+
+// Handle tool calls
+for (const block of response.content) {
+  if (block.type === "tool_use") {
+    const result = fs.call(block.name, JSON.stringify(block.input));
+    console.log(result);
+  }
+}
+```
+
 ### Node.js (worker thread pool)
 
 For servers handling concurrent requests — keeps the event loop free:
@@ -189,36 +219,6 @@ Hand these to your LLM and let it work:
     "required": ["path"]
   }
 ]
-```
-
-## Example: customer service agent with Claude
-
-```js
-import Anthropic from "@anthropic-ai/sdk";
-import { loadFromDirectory } from "memexfs";
-
-const fs = loadFromDirectory("./knowledge-base");
-
-// Set up Claude with memexfs tools
-const client = new Anthropic();
-const tools = JSON.parse(fs.tool_definitions());
-
-const response = await client.messages.create({
-  model: "claude-haiku-4-5-20251001",
-  max_tokens: 1024,
-  system:
-    "You are a customer service agent. Use grep to find relevant docs, then read to get full context. Answer based on the documentation only.",
-  tools,
-  messages: [{ role: "user", content: "How do I cancel my subscription?" }],
-});
-
-// Handle tool calls
-for (const block of response.content) {
-  if (block.type === "tool_use") {
-    const result = fs.call(block.name, JSON.stringify(block.input));
-    console.log(result);
-  }
-}
 ```
 
 ## Performance
