@@ -6,13 +6,15 @@ import { loadFromDirectory } from "./loader.mjs";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const fixturesDir = resolve(__dirname, "../fixtures");
+const nestedDir = resolve(__dirname, "../fixtures/nested");
 
 let fs;
 
 describe("MemexFS via WASM", () => {
-  it("loads all fixtures", () => {
+  it("loads all fixtures recursively", () => {
     fs = loadFromDirectory(fixturesDir);
-    assert.equal(fs.document_count(), 100);
+    // 100 top-level .md files + 2 nested .md files
+    assert.equal(fs.document_count(), 102);
   });
 
   it("has a positive token count", () => {
@@ -69,11 +71,51 @@ describe("MemexFS via WASM", () => {
     assert.ok(readResult.includes("git"));
   });
 
-  it("tool_definitions returns two tools", () => {
+  it("tool_definitions returns three tools", () => {
     const defs = JSON.parse(fs.tool_definitions());
     assert.ok(Array.isArray(defs));
-    assert.equal(defs.length, 2);
+    assert.equal(defs.length, 3);
     const names = defs.map((d) => d.name).sort();
-    assert.deepEqual(names, ["grep", "read"]);
+    assert.deepEqual(names, ["grep", "ls", "read"]);
+  });
+
+  it("ls lists files and directories at root", () => {
+    const entries = JSON.parse(fs.ls(""));
+    assert.ok(entries.length > 0, "should list entries");
+    assert.ok(
+      entries.includes("nested/"),
+      "should include nested/ subdirectory"
+    );
+    assert.ok(
+      entries.some((e) => e.endsWith(".md")),
+      "should include .md files"
+    );
+  });
+
+  it("call dispatches ls", () => {
+    const result = fs.call("ls", JSON.stringify({ path: "" }));
+    const entries = JSON.parse(result);
+    assert.ok(Array.isArray(entries));
+    assert.ok(entries.length > 0);
+  });
+});
+
+describe("loadFromDirectory recursive", () => {
+  it("loads .md files recursively with relative paths", () => {
+    const nested = loadFromDirectory(nestedDir);
+    assert.equal(nested.document_count(), 2);
+
+    // Should be able to read using relative paths
+    const top = nested.read("top.md");
+    assert.ok(top.includes("Top level doc"));
+
+    const deep = nested.read("subdir/deep.md");
+    assert.ok(deep.includes("nested inside subdir"));
+  });
+
+  it("ls shows subdirectories for recursively loaded docs", () => {
+    const nested = loadFromDirectory(nestedDir);
+    const entries = JSON.parse(nested.ls(""));
+    assert.deepEqual(entries, ["subdir/", "top.md"]);
   });
 });

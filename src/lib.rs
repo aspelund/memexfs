@@ -44,75 +44,140 @@ impl MemexFsCore {
         }
 
         let max_results = 100;
-        let mut results: Vec<GrepResult> = Vec::new();
 
-        let is_simple = !has_regex_metacharacters(pattern);
-
-        if is_simple {
+        let mut results = if has_regex_metacharacters(pattern) {
+            self.grep_regex(pattern, glob, max_results)?
+        } else {
             let pattern_lower = pattern.to_lowercase();
-            let paths = self.store.paths();
+            let is_single_token = pattern_lower.len() >= 3
+                && pattern_lower.chars().all(|c| c.is_alphanumeric());
 
-            for path in paths {
-                if results.len() >= max_results {
-                    break;
-                }
-                if let Some(g) = glob {
-                    if !glob_match::glob_match(g, path) {
-                        continue;
-                    }
-                }
-                if let Some(doc) = self.store.get_document(path) {
-                    for (i, line) in doc.lines.iter().enumerate() {
-                        if results.len() >= max_results {
-                            break;
-                        }
-                        if line.to_lowercase().contains(&pattern_lower) {
-                            results.push(GrepResult {
-                                path: path.to_string(),
-                                line: (i + 1) as u32,
-                                content: line.clone(),
-                            });
-                        }
-                    }
+            if is_single_token {
+                self.grep_index(&pattern_lower, glob, max_results)
+            } else {
+                self.grep_scan(&pattern_lower, glob, max_results)
+            }
+        };
+
+        results.sort_by(|a, b| a.path.cmp(&b.path).then(a.line.cmp(&b.line)));
+        Ok(results)
+    }
+
+    /// Fast path: scan inverted index tokens for substring match.
+    /// Used for single alphanumeric patterns (≥3 chars) where the index
+    /// is much smaller than the total line count.
+    fn grep_index(
+        &self,
+        pattern_lower: &str,
+        glob: Option<&str>,
+        max_results: usize,
+    ) -> Vec<GrepResult> {
+        let locations = self.store.index().find_containing(pattern_lower);
+        let mut results = Vec::new();
+
+        for (path, line_num) in &locations {
+            if results.len() >= max_results {
+                break;
+            }
+            if let Some(g) = glob {
+                if !glob_match::glob_match(g, path) {
+                    continue;
                 }
             }
-        } else {
-            let re = regex::RegexBuilder::new(pattern)
-                .case_insensitive(true)
-                .build()
-                .map_err(|e| MemexError::new(&format!("MemexError: invalid regex: {}", e)))?;
-
-            let paths = self.store.paths();
-
-            for path in paths {
-                if results.len() >= max_results {
-                    break;
+            if let Some(doc) = self.store.get_document(path) {
+                let idx = (*line_num - 1) as usize;
+                if idx < doc.lines.len() {
+                    results.push(GrepResult {
+                        path: path.clone(),
+                        line: *line_num,
+                        content: doc.lines[idx].clone(),
+                    });
                 }
+            }
+        }
 
-                if let Some(g) = glob {
-                    if !glob_match::glob_match(g, path) {
-                        continue;
+        results
+    }
+
+    /// Scan pre-lowercased lines. Used for multi-word patterns or short
+    /// patterns where the index would match too many tokens.
+    fn grep_scan(
+        &self,
+        pattern_lower: &str,
+        glob: Option<&str>,
+        max_results: usize,
+    ) -> Vec<GrepResult> {
+        let mut results = Vec::new();
+        let paths = self.store.paths();
+
+        for path in paths {
+            if results.len() >= max_results {
+                break;
+            }
+            if let Some(g) = glob {
+                if !glob_match::glob_match(g, path) {
+                    continue;
+                }
+            }
+            if let Some(doc) = self.store.get_document(path) {
+                for (i, line_lower) in doc.lines_lower.iter().enumerate() {
+                    if results.len() >= max_results {
+                        break;
                     }
-                }
-
-                if let Some(doc) = self.store.get_document(path) {
-                    for (i, line) in doc.lines.iter().enumerate() {
-                        if results.len() >= max_results {
-                            break;
-                        }
-                        if re.is_match(line) {
-                            results.push(GrepResult {
-                                path: path.to_string(),
-                                line: (i + 1) as u32,
-                                content: line.clone(),
-                            });
-                        }
+                    if line_lower.contains(pattern_lower) {
+                        results.push(GrepResult {
+                            path: path.to_string(),
+                            line: (i + 1) as u32,
+                            content: doc.lines[i].clone(),
+                        });
                     }
                 }
             }
         }
 
-        results.sort_by(|a, b| a.path.cmp(&b.path).then(a.line.cmp(&b.line)));
+        results
+    }
+
+    /// Regex path: compile pattern and scan all lines.
+    fn grep_regex(
+        &self,
+        pattern: &str,
+        glob: Option<&str>,
+        max_results: usize,
+    ) -> Result<Vec<GrepResult>, MemexError> {
+        let re = regex::RegexBuilder::new(pattern)
+            .case_insensitive(true)
+            .build()
+            .map_err(|e| MemexError::new(&format!("MemexError: invalid regex: {}", e)))?;
+
+        let mut results = Vec::new();
+        let paths = self.store.paths();
+
+        for path in paths {
+            if results.len() >= max_results {
+                break;
+            }
+            if let Some(g) = glob {
+                if !glob_match::glob_match(g, path) {
+                    continue;
+                }
+            }
+            if let Some(doc) = self.store.get_document(path) {
+                for (i, line) in doc.lines.iter().enumerate() {
+                    if results.len() >= max_results {
+                        break;
+                    }
+                    if re.is_match(line) {
+                        results.push(GrepResult {
+                            path: path.to_string(),
+                            line: (i + 1) as u32,
+                            content: line.clone(),
+                        });
+                    }
+                }
+            }
+        }
+
         Ok(results)
     }
 
@@ -128,6 +193,10 @@ impl MemexFsCore {
             .ok_or_else(|| MemexError::new(&format!("MemexError: document not found: {}", path)))?;
 
         Ok(doc.read(offset, limit))
+    }
+
+    pub fn ls(&self, path: &str) -> Vec<String> {
+        self.store.ls(path)
     }
 
     pub fn call(&self, name: &str, params_json: &str) -> Result<String, MemexError> {
@@ -146,6 +215,12 @@ impl MemexFsCore {
                     params.offset.map(|o| o as usize),
                     params.limit.map(|l| l as usize),
                 )
+            }
+            "ls" => {
+                let params: LsParams = serde_json::from_str(params_json)
+                    .map_err(|e| MemexError::new(&e.to_string()))?;
+                let entries = self.ls(&params.path);
+                serde_json::to_string(&entries).map_err(|e| MemexError::new(&e.to_string()))
             }
             _ => Err(MemexError::new(&format!(
                 "MemexError: unknown tool: {}",
@@ -202,6 +277,11 @@ impl MemexFS {
             .map_err(|e| JsError::new(&e.message))
     }
 
+    pub fn ls(&self, path: &str) -> Result<String, JsError> {
+        let entries = self.core.ls(path);
+        serde_json::to_string(&entries).map_err(|e| JsError::new(&e.to_string()))
+    }
+
     pub fn tool_definitions(&self) -> String {
         self.core.tool_definitions()
     }
@@ -234,6 +314,11 @@ struct ReadParams {
     path: String,
     offset: Option<u32>,
     limit: Option<u32>,
+}
+
+#[derive(Deserialize)]
+struct LsParams {
+    path: String,
 }
 
 fn has_regex_metacharacters(pattern: &str) -> bool {
@@ -275,6 +360,14 @@ fn tool_definitions_json() -> serde_json::Value {
                 "path": { "type": "string", "description": "Document path relative to the knowledge base root" },
                 "offset": { "type": "number", "description": "Line number to start reading from (1-indexed)" },
                 "limit": { "type": "number", "description": "Number of lines to return" }
+            },
+            "required": ["path"]
+        },
+        {
+            "name": "ls",
+            "description": "List the contents of a directory. Returns immediate children: file names and subdirectory names (with trailing '/'). Use this to explore the document structure before grepping or reading.",
+            "parameters": {
+                "path": { "type": "string", "description": "Directory path to list, e.g. 'account' or 'billing/invoices'. Use empty string or '.' for root." }
             },
             "required": ["path"]
         }
@@ -381,7 +474,7 @@ mod tests {
         let defs = fs.tool_definitions();
         let parsed: serde_json::Value = serde_json::from_str(&defs).unwrap();
         assert!(parsed.is_array());
-        assert_eq!(parsed.as_array().unwrap().len(), 2);
+        assert_eq!(parsed.as_array().unwrap().len(), 3);
     }
 
     #[test]
@@ -459,6 +552,79 @@ mod tests {
         let results = fs.grep("hackathon in sekoya", None).unwrap();
         assert_eq!(results.len(), 1, "exact phrase only in a.md");
         assert_eq!(results[0].path, "a.md");
+    }
+
+    #[test]
+    fn test_ls_root() {
+        let fs = make_fs();
+        let entries = fs.ls("");
+        assert_eq!(entries, vec!["account/", "billing/"]);
+    }
+
+    #[test]
+    fn test_ls_root_dot() {
+        let fs = make_fs();
+        let entries = fs.ls(".");
+        assert_eq!(entries, vec!["account/", "billing/"]);
+    }
+
+    #[test]
+    fn test_ls_subdirectory() {
+        let fs = make_fs();
+        let entries = fs.ls("account");
+        assert_eq!(entries, vec!["password-reset.md"]);
+    }
+
+    #[test]
+    fn test_ls_subdirectory_trailing_slash() {
+        let fs = make_fs();
+        let entries = fs.ls("account/");
+        assert_eq!(entries, vec!["password-reset.md"]);
+    }
+
+    #[test]
+    fn test_ls_empty_directory() {
+        let fs = make_fs();
+        let entries = fs.ls("nonexistent");
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_ls_nested() {
+        let docs = serde_json::to_string(&vec![
+            ("a/b/c.md", "content"),
+            ("a/b/d.md", "content"),
+            ("a/e.md", "content"),
+            ("f.md", "content"),
+        ]).unwrap();
+        let fs = MemexFsCore::from_json(&docs).unwrap();
+
+        let root = fs.ls("");
+        assert_eq!(root, vec!["a/", "f.md"]);
+
+        let a = fs.ls("a");
+        assert_eq!(a, vec!["b/", "e.md"]);
+
+        let ab = fs.ls("a/b");
+        assert_eq!(ab, vec!["c.md", "d.md"]);
+    }
+
+    #[test]
+    fn test_call_ls() {
+        let fs = make_fs();
+        let result = fs.call("ls", r#"{"path": ""}"#).unwrap();
+        let entries: Vec<String> = serde_json::from_str(&result).unwrap();
+        assert_eq!(entries, vec!["account/", "billing/"]);
+    }
+
+    #[test]
+    fn test_tool_definitions_includes_ls() {
+        let fs = make_fs();
+        let defs = fs.tool_definitions();
+        let parsed: serde_json::Value = serde_json::from_str(&defs).unwrap();
+        let arr = parsed.as_array().unwrap();
+        assert_eq!(arr.len(), 3);
+        assert!(arr.iter().any(|d| d["name"] == "ls"));
     }
 
     // Bug reproduction: duplicate matches per line

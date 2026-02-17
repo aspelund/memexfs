@@ -31,6 +31,10 @@ After init, the filesystem is entirely in-memory and immutable. All queries are 
 │                   ┌────┴───┐      ┌─────┴────┐   │
 │                   │  grep  │      │   read   │   │
 │                   └────────┘      └──────────┘   │
+│                        │                         │
+│                   ┌────┴───┐                     │
+│                   │   ls   │                     │
+│                   └────────┘                     │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -100,6 +104,17 @@ This supports fast exact-token matching. For regex patterns, we fall back to a l
 3. Return lines joined as string
 ```
 
+### ls(path)
+
+```
+1. Normalize path to a prefix (with trailing /)
+2. Iterate all document paths in the store
+3. For each path matching the prefix:
+   → If next segment contains '/', add directory entry (name + '/')
+   → Otherwise, add file entry (name)
+4. Deduplicate via BTreeSet → sorted output
+```
+
 ## WASM compilation
 
 ```
@@ -164,6 +179,7 @@ In this mode, the JS binding handles I/O and the Rust/WASM core handles indexing
 |-----------|-------------|-------|------------------|
 | grep | O(1) lookup + O(k) results | O(n) scan over lines | O(m) where m < n |
 | read | O(1) always | — | — |
+| ls | O(d) where d = total docs | — | — |
 
 Where:
 - k = number of matches for the token

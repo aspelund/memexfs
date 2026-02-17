@@ -39,6 +39,22 @@ impl InvertedIndex {
     pub fn token_count(&self) -> usize {
         self.index.len()
     }
+
+    /// Find all (path, line_number) locations where a token contains the given
+    /// substring. Returns deduplicated results sorted by (path, line).
+    pub fn find_containing(&self, substring: &str) -> Vec<(String, u32)> {
+        let mut seen = std::collections::BTreeSet::new();
+
+        for (token, locations) in &self.index {
+            if token.contains(substring) {
+                for (path, line_num) in locations {
+                    seen.insert((path.clone(), *line_num));
+                }
+            }
+        }
+
+        seen.into_iter().collect()
+    }
 }
 
 /// Tokenize a line: lowercase, split on non-alphanumeric boundaries.

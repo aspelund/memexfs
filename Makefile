@@ -1,4 +1,4 @@
-.PHONY: test build test-node test-all bench clean
+.PHONY: test build test-node test-pool test-all bench clean
 
 test:
 	cargo test
@@ -9,7 +9,10 @@ build:
 test-node: build
 	node --test js/loader.test.mjs
 
-test-all: test test-node
+test-pool: build
+	node --test js/pool.test.mjs
+
+test-all: test test-node test-pool
 
 bench: build
 	node js/bench.mjs

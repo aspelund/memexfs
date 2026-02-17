@@ -1,9 +1,15 @@
 {
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./js/loader.mjs",
+    "./pool": "./js/pool.mjs",
+    "./collect": "./js/collect.mjs"
+  },
   "scripts": {
     "build": "wasm-pack build --target web",
     "test": "node --test js/loader.test.mjs",
+    "test:pool": "node --test js/pool.test.mjs",
     "bench": "node js/bench.mjs"
   }
 }

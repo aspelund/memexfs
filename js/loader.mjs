@@ -1,7 +1,8 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { initSync, MemexFS } from "../pkg/memexfs.js";
+import { collectMdFiles } from "./collect.mjs";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const wasmPath = resolve(__dirname, "../pkg/memexfs_bg.wasm");
@@ -17,7 +18,7 @@ function ensureInit() {
 }
 
 /**
- * Load all .md files from a directory into a MemexFS instance.
+ * Load all .md files recursively from a directory into a MemexFS instance.
  * @param {string} dir - Absolute or relative path to the directory.
  * @returns {MemexFS}
  */
@@ -25,11 +26,9 @@ export function loadFromDirectory(dir) {
   ensureInit();
 
   const absDir = resolve(dir);
-  const files = readdirSync(absDir).filter((f) => f.endsWith(".md")).sort();
-  const docs = files.map((f) => {
-    const content = readFileSync(join(absDir, f), "utf-8");
-    return [f, content];
-  });
+  const docs = collectMdFiles(absDir, absDir).sort((a, b) =>
+    a[0].localeCompare(b[0])
+  );
 
   return new MemexFS(JSON.stringify(docs));
 }

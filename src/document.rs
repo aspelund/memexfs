@@ -5,12 +5,15 @@ use serde::{Deserialize, Serialize};
 pub struct Document {
     pub path: String,
     pub lines: Vec<String>,
+    /// Pre-lowercased lines for fast case-insensitive search.
+    pub lines_lower: Vec<String>,
 }
 
 impl Document {
     pub fn new(path: String, content: &str) -> Self {
         let lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
-        Self { path, lines }
+        let lines_lower: Vec<String> = lines.iter().map(|l| l.to_lowercase()).collect();
+        Self { path, lines, lines_lower }
     }
 
     pub fn total_lines(&self) -> usize {

@@ -124,5 +124,5 @@ fn test_tool_definitions() {
     let defs = fs.tool_definitions();
     let parsed: serde_json::Value = serde_json::from_str(&defs).unwrap();
     assert!(parsed.is_array());
-    assert_eq!(parsed.as_array().unwrap().len(), 2);
+    assert_eq!(parsed.as_array().unwrap().len(), 3);
 }

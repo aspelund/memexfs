@@ -119,11 +119,42 @@ fs.read("account/password-reset.md", { offset: 10, limit: 20 });
 
 ---
 
+### `ls(path: string): string[]`
+
+List the immediate children of a virtual directory path.
+
+#### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `path` | `string` | yes | Directory path to list. Use `""` or `"."` for root. Trailing slash is optional. |
+
+#### Returns
+
+A sorted array of strings: file names and subdirectory names (with trailing `/`).
+
+```js
+fs.ls("");
+// ["account/", "billing/"]
+
+fs.ls("account");
+// ["password-reset.md"]
+```
+
+#### Behavior
+
+- Returns immediate children only (not recursive)
+- Subdirectories are indicated by a trailing `/`
+- Returns an empty array if the path has no children
+- Both `"account"` and `"account/"` are equivalent
+
+---
+
 ## Convenience methods
 
 ### `toolDefinitions(): ToolDefinition[]`
 
-Returns the two tool definitions as a JSON-serializable array, ready to pass to an LLM API.
+Returns the three tool definitions as a JSON-serializable array, ready to pass to an LLM API.
 
 ```js
 const tools = fs.toolDefinitions();
@@ -144,8 +175,9 @@ const result = fs.call(toolUse.name, toolUse.input);
 |------|------------|
 | `call("grep", { pattern, glob? })` | JSON string of `GrepResult[]` |
 | `call("read", { path, offset?, limit? })` | Document text with line numbers |
+| `call("ls", { path })` | JSON string of `string[]` |
 
-**Throws** if `name` is not `"grep"` or `"read"`.
+**Throws** if `name` is not `"grep"`, `"read"`, or `"ls"`.
 
 ---
 

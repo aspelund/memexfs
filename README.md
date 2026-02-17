@@ -1,12 +1,12 @@
 # memexfs
 
-A WASM virtual filesystem exposing `grep` and `read` over markdown — two tools, sub-millisecond, zero dependencies.
+A WASM virtual filesystem exposing `grep`, `read`, and `ls` over markdown — three tools, sub-millisecond, zero dependencies.
 
 ## Why
 
 RAG is overkill for < 500 documents. You don't need embeddings, vector databases, chunking strategies, or similarity thresholds to answer "which doc answers this question?" — you need grep.
 
-`memexfs` loads a folder of markdown into memory, builds a fast index, and exposes exactly two operations: `grep` and `read`. Give these as tools to any LLM capable of tool calling (Claude Haiku, GPT-4o-mini, etc.) and you have a customer service agent, documentation assistant, or knowledge base — without the RAG pipeline.
+`memexfs` loads a folder of markdown into memory, builds a fast index, and exposes three operations: `grep`, `read`, and `ls`. Give these as tools to any LLM capable of tool calling (Claude Haiku, GPT-4o-mini, etc.) and you have a customer service agent, documentation assistant, or knowledge base — without the RAG pipeline.
 
 The LLM **is** your re-ranker. It reads grep results, picks what to read deeper, and answers. That's the whole system.
 
@@ -115,13 +115,30 @@ const slice = fs.read("billing/refund.md", 3, 1);
 - `offset` is 1-indexed
 - Throws if the path doesn't exist
 
+### `fs.ls(path: string): string`
+
+Lists immediate children of a virtual directory. Returns a JSON string of file names and subdirectory names (with trailing `/`).
+
+```js
+const entries = JSON.parse(fs.ls(""));
+// ["account/", "billing/"]
+
+const files = JSON.parse(fs.ls("account"));
+// ["password-reset.md"]
+```
+
+- Use `""` or `"."` for the root directory
+- Trailing slash on `path` is optional (`"account"` and `"account/"` are equivalent)
+- Returns an empty array if the path has no children
+
 ### `fs.call(name: string, params_json: string): string`
 
-Tool dispatcher for LLM integration. Accepts `"grep"` or `"read"` as the tool name:
+Tool dispatcher for LLM integration. Accepts `"grep"`, `"read"`, or `"ls"` as the tool name:
 
 ```js
 const result = fs.call("grep", JSON.stringify({ pattern: "reset", glob: "account/*.md" }));
 const content = fs.call("read", JSON.stringify({ path: "account/reset.md", offset: 1, limit: 10 }));
+const entries = fs.call("ls", JSON.stringify({ path: "" }));
 ```
 
 ### `fs.tool_definitions(): string`
@@ -130,7 +147,7 @@ Returns a JSON string with the tool definitions, ready to pass to an LLM:
 
 ```js
 const tools = JSON.parse(fs.tool_definitions());
-// [{ name: "grep", description: "...", parameters: {...} }, { name: "read", ... }]
+// [{ name: "grep", ... }, { name: "read", ... }, { name: "ls", ... }]
 ```
 
 ### `fs.document_count(): number`
@@ -163,6 +180,14 @@ Hand these to your LLM and let it work:
       "path": { "type": "string", "description": "Document path relative to the knowledge base root" },
       "offset": { "type": "number", "description": "Line number to start reading from (1-indexed)" },
       "limit": { "type": "number", "description": "Number of lines to return" }
+    },
+    "required": ["path"]
+  },
+  {
+    "name": "ls",
+    "description": "List the contents of a directory. Returns immediate children: file names and subdirectory names (with trailing '/'). Use this to explore the document structure before grepping or reading.",
+    "parameters": {
+      "path": { "type": "string", "description": "Directory path to list, e.g. 'account' or 'billing/invoices'. Use empty string or '.' for root." }
     },
     "required": ["path"]
   }
@@ -282,7 +307,7 @@ memexfs/
 
 ## Design constraints
 
-- **Two operations only.** grep and read. Nothing else.
+- **Three operations only.** grep, read, and ls. Nothing else.
 - **Read-only.** No writes, no mutations, no state changes after init.
 - **In-memory.** Everything loaded at init. No disk I/O after startup.
 - **Zero dependencies.** Pure Rust compiled to WASM. No npm runtime deps.
