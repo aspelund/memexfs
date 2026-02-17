@@ -49,76 +49,29 @@ impl MemexFsCore {
         let is_simple = !has_regex_metacharacters(pattern);
 
         if is_simple {
-            let tokens: Vec<&str> = pattern.split_whitespace().collect();
-            let mut used_index = false;
+            let pattern_lower = pattern.to_lowercase();
+            let paths = self.store.paths();
 
-            if let Some(first_token) = tokens.first() {
-                if let Some(locations) = self.store.index().lookup(first_token) {
-                    used_index = true;
-                    for (doc_path, line_num) in locations {
+            for path in paths {
+                if results.len() >= max_results {
+                    break;
+                }
+                if let Some(g) = glob {
+                    if !glob_match::glob_match(g, path) {
+                        continue;
+                    }
+                }
+                if let Some(doc) = self.store.get_document(path) {
+                    for (i, line) in doc.lines.iter().enumerate() {
                         if results.len() >= max_results {
                             break;
                         }
-
-                        if let Some(g) = glob {
-                            if !glob_match::glob_match(g, doc_path) {
-                                continue;
-                            }
-                        }
-
-                        if let Some(doc) = self.store.get_document(doc_path) {
-                            let line_idx = (*line_num as usize).saturating_sub(1);
-                            if line_idx < doc.lines.len() {
-                                let line_content = &doc.lines[line_idx];
-                                let line_lower = line_content.to_lowercase();
-                                let pattern_lower = pattern.to_lowercase();
-                                if tokens.len() == 1
-                                    || line_lower.contains(&pattern_lower)
-                                    || tokens
-                                        .iter()
-                                        .all(|t| line_lower.contains(&t.to_lowercase()))
-                                {
-                                    results.push(GrepResult {
-                                        path: doc_path.clone(),
-                                        line: *line_num,
-                                        content: line_content.clone(),
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Fallback: if the index had no exact token match, do a linear
-            // substring scan so that partial-word patterns like "arch" still
-            // match lines containing "archive".
-            if !used_index || results.is_empty() {
-                results.clear();
-                let pattern_lower = pattern.to_lowercase();
-                let paths = self.store.paths();
-
-                for path in paths {
-                    if results.len() >= max_results {
-                        break;
-                    }
-                    if let Some(g) = glob {
-                        if !glob_match::glob_match(g, path) {
-                            continue;
-                        }
-                    }
-                    if let Some(doc) = self.store.get_document(path) {
-                        for (i, line) in doc.lines.iter().enumerate() {
-                            if results.len() >= max_results {
-                                break;
-                            }
-                            if line.to_lowercase().contains(&pattern_lower) {
-                                results.push(GrepResult {
-                                    path: path.to_string(),
-                                    line: (i + 1) as u32,
-                                    content: line.clone(),
-                                });
-                            }
+                        if line.to_lowercase().contains(&pattern_lower) {
+                            results.push(GrepResult {
+                                path: path.to_string(),
+                                line: (i + 1) as u32,
+                                content: line.clone(),
+                            });
                         }
                     }
                 }
@@ -476,6 +429,36 @@ mod tests {
         let fs = MemexFsCore::from_json(&docs).unwrap();
         let results = fs.grep("arch", None).unwrap();
         assert!(!results.is_empty(), "should find 'arch' inside 'archive'");
+    }
+
+    #[test]
+    fn test_grep_numeric_substring_in_compound_token() {
+        // "559571" embedded in "SE559571232301" — mimics org number in identifier
+        let docs = serde_json::to_string(&vec![
+            ("org.md", "Company registered as SE559571232301 in Sweden"),
+            ("other.md", "Reference number 559571 standalone"),
+            ("unrelated.md", "No match here"),
+        ]).unwrap();
+        let fs = MemexFsCore::from_json(&docs).unwrap();
+        let results = fs.grep("559571", None).unwrap();
+        assert_eq!(results.len(), 2, "should match both embedded and standalone");
+        assert!(results.iter().any(|r| r.path == "org.md"), "should find embedded match");
+        assert!(results.iter().any(|r| r.path == "other.md"), "should find standalone match");
+    }
+
+    #[test]
+    fn test_grep_multi_word_substring_fallback() {
+        // Multi-word pattern where first token hits index but full phrase also
+        // needs substring matching across documents
+        let docs = serde_json::to_string(&vec![
+            ("a.md", "hackathon in sekoya was great"),
+            ("b.md", "The sekoya hackathon event"),
+            ("c.md", "No match here"),
+        ]).unwrap();
+        let fs = MemexFsCore::from_json(&docs).unwrap();
+        let results = fs.grep("hackathon in sekoya", None).unwrap();
+        assert_eq!(results.len(), 1, "exact phrase only in a.md");
+        assert_eq!(results[0].path, "a.md");
     }
 
     // Bug reproduction: duplicate matches per line
