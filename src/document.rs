@@ -16,10 +16,6 @@ impl Document {
         Self { path, lines, lines_lower }
     }
 
-    pub fn total_lines(&self) -> usize {
-        self.lines.len()
-    }
-
     /// Read lines with optional offset (1-indexed) and limit.
     /// Returns formatted text with line numbers.
     pub fn read(&self, offset: Option<usize>, limit: Option<usize>) -> String {

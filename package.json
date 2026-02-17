@@ -1,13 +1,51 @@
 {
-  "private": true,
+  "name": "memexfs",
+  "version": "0.1.0",
+  "description": "WASM virtual filesystem exposing grep, read, and ls over markdown",
   "type": "module",
-  "exports": {
-    ".": "./js/loader.mjs",
-    "./pool": "./js/pool.mjs",
-    "./collect": "./js/collect.mjs"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aspelund/memexfs.git"
   },
+  "keywords": [
+    "wasm",
+    "markdown",
+    "grep",
+    "filesystem",
+    "llm",
+    "tools"
+  ],
+  "exports": {
+    ".": {
+      "types": "./js/loader.d.mts",
+      "default": "./js/loader.mjs"
+    },
+    "./pool": {
+      "types": "./js/pool.d.mts",
+      "default": "./js/pool.mjs"
+    },
+    "./collect": {
+      "types": "./js/collect.d.mts",
+      "default": "./js/collect.mjs"
+    }
+  },
+  "files": [
+    "js/collect.mjs",
+    "js/collect.d.mts",
+    "js/loader.mjs",
+    "js/loader.d.mts",
+    "js/pool.mjs",
+    "js/pool.d.mts",
+    "js/worker.mjs",
+    "pkg/memexfs.js",
+    "pkg/memexfs_bg.wasm",
+    "pkg/memexfs.d.ts",
+    "pkg/memexfs_bg.wasm.d.ts"
+  ],
   "scripts": {
     "build": "wasm-pack build --target web",
+    "prepublishOnly": "wasm-pack build --target web",
     "test": "node --test js/loader.test.mjs",
     "test:pool": "node --test js/pool.test.mjs",
     "bench": "node js/bench.mjs"

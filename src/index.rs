@@ -31,7 +31,7 @@ impl InvertedIndex {
         }
     }
 
-    /// Look up a token in the index. Returns matching (path, line_number) pairs.
+    #[cfg(test)]
     pub fn lookup(&self, token: &str) -> Option<&Vec<(String, u32)>> {
         self.index.get(&token.to_lowercase())
     }
