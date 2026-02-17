@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "wasm-pack build --target web",
+    "test": "node --test js/loader.test.mjs",
+    "bench": "node js/bench.mjs"
+  }
+}

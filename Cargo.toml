@@ -1,0 +1,24 @@
+[package]
+name = "memexfs"
+version = "0.1.0"
+edition = "2021"
+description = "WASM virtual filesystem exposing grep and read over markdown"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+js-sys = "0.3"
+regex = "1"
+glob-match = "0.2"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[profile.release]
+opt-level = "s"
+lto = true
