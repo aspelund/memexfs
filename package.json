@@ -1,6 +1,6 @@
 {
   "name": "memexfs",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "WASM virtual filesystem exposing grep, read, and ls over markdown",
   "type": "module",
   "license": "MIT",
