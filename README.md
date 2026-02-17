@@ -18,53 +18,50 @@ npm install memexfs
 
 ## Quick start
 
+### Node.js (single-threaded)
+
+```js
+import { loadFromDirectory } from "memexfs";
+
+const fs = loadFromDirectory("./docs");
+
+const results = JSON.parse(fs.grep("password"));
+// [{ path: "account/password-reset.md", line: 1, content: "# Password Reset" }]
+
+const content = fs.read("account/password-reset.md");
+const entries = JSON.parse(fs.ls(""));
+```
+
+### Node.js (worker thread pool)
+
+For servers handling concurrent requests — keeps the event loop free:
+
+```js
+import { createPool } from "memexfs/pool";
+
+const pool = await createPool("./docs", { workers: 4 });
+
+const results = await pool.grep("password");    // GrepResult[]
+const content = await pool.read("doc.md");       // string
+const entries = await pool.ls("");               // string[]
+
+await pool.terminate();
+```
+
 ### Browser
 
 ```js
 import init, { MemexFS } from "memexfs";
 
-// Initialize the WASM module (fetches the .wasm file automatically)
 await init();
 
-// Build the docs array: [[path, content], ...]
 const docs = [
   ["account/password-reset.md", "# Password Reset\n\nGo to Settings > Reset Password."],
   ["billing/refund.md", "# Refunds\n\nContact support to request a refund."],
 ];
 
 const fs = new MemexFS(JSON.stringify(docs));
-
-// Search across all documents
 const results = JSON.parse(fs.grep("password"));
-// [{ path: "account/password-reset.md", line: 1, content: "# Password Reset" }]
-
-// Read a specific document (returns line-numbered text)
-const content = fs.read("account/password-reset.md");
-
-// Read a specific section (offset is 1-indexed)
-const section = fs.read("account/password-reset.md", 2, 5);
-```
-
-### Node.js
-
-```js
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-import { initSync, MemexFS } from "memexfs";
-
-// Initialize WASM synchronously in Node
-const wasmPath = new URL("memexfs_bg.wasm", import.meta.resolve("memexfs"));
-initSync({ module: readFileSync(wasmPath) });
-
-// Load documents from a directory
-const dir = "./docs";
-const docs = readdirSync(dir)
-  .filter(f => f.endsWith(".md"))
-  .map(f => [f, readFileSync(join(dir, f), "utf-8")]);
-
-const fs = new MemexFS(JSON.stringify(docs));
-
-const results = JSON.parse(fs.grep("password reset"));
 ```
 
 ## API
@@ -198,20 +195,9 @@ Hand these to your LLM and let it work:
 
 ```js
 import Anthropic from "@anthropic-ai/sdk";
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-import { initSync, MemexFS } from "memexfs";
+import { loadFromDirectory } from "memexfs";
 
-// Initialize WASM
-const wasmPath = new URL("memexfs_bg.wasm", import.meta.resolve("memexfs"));
-initSync({ module: readFileSync(wasmPath) });
-
-// Load knowledge base
-const dir = "./knowledge-base";
-const docs = readdirSync(dir)
-  .filter(f => f.endsWith(".md"))
-  .map(f => [f, readFileSync(join(dir, f), "utf-8")]);
-const fs = new MemexFS(JSON.stringify(docs));
+const fs = loadFromDirectory("./knowledge-base");
 
 // Set up Claude with memexfs tools
 const client = new Anthropic();
@@ -265,11 +251,14 @@ make bench
 ```bash
 # Prerequisites: Rust, wasm-pack, Node.js >= 18
 
-# Run Rust unit + integration tests (37 tests)
+# Run Rust unit + integration tests
 make test
 
-# Build WASM + run Node.js tests (10 tests)
+# Build WASM + run Node.js tests
 make test-node
+
+# Build WASM + run pool tests
+make test-pool
 
 # Run everything
 make test-all
@@ -293,10 +282,14 @@ memexfs/
 │   └── error.rs      # MemexError type
 ├── tests/
 │   └── fixtures.rs   # Integration tests against real .md files
-├── fixtures/         # 100 .md files from tldr-pages (test data)
+├── fixtures/         # 100+ .md files from tldr-pages (test data)
 ├── js/
 │   ├── loader.mjs    # Node.js helper: loadFromDirectory()
-│   ├── loader.test.mjs  # Node.js tests (node:test, zero deps)
+│   ├── collect.mjs   # Recursive .md file collector (shared)
+│   ├── pool.mjs      # Worker thread pool: createPool()
+│   ├── worker.mjs    # Worker script (owns a WASM instance)
+│   ├── loader.test.mjs  # Loader tests (node:test)
+│   ├── pool.test.mjs    # Pool tests (node:test)
 │   └── bench.mjs     # Performance benchmarks
 ├── pkg/              # wasm-pack output (gitignored)
 ├── docs/             # Architecture & spec docs
